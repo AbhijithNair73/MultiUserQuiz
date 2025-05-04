@@ -1,0 +1,5 @@
+C:/Users/abhijith.nair/source/repos/MultiUserQuiz/out/build/x64-debug/CMakeFiles/edit_cache.dir
+C:/Users/abhijith.nair/source/repos/MultiUserQuiz/out/build/x64-debug/CMakeFiles/rebuild_cache.dir
+C:/Users/abhijith.nair/source/repos/MultiUserQuiz/out/build/x64-debug/MultiUserQuiz/CMakeFiles/MultiUserQuiz.dir
+C:/Users/abhijith.nair/source/repos/MultiUserQuiz/out/build/x64-debug/MultiUserQuiz/CMakeFiles/edit_cache.dir
+C:/Users/abhijith.nair/source/repos/MultiUserQuiz/out/build/x64-debug/MultiUserQuiz/CMakeFiles/rebuild_cache.dir
