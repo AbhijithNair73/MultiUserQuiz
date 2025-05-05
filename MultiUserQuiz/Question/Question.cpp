@@ -13,22 +13,22 @@ Question::~Question ()
 
 }
 
-unsigned int Question::GetQuestionID ()
+unsigned int Question::GetQuestionID () const
 {
     return questionID;
 }
 
-string Question::GetQuestionText ()
+string Question::GetQuestionText () const
 {
     return questionText;
 }
 
-vector<string> Question::GetQuestionOptions ()
+vector<string> Question::GetQuestionOptions () const
 {
     return quesOptions;
 }
 
-unordered_set<int> Question::GetCorrectOptions ()
+unordered_set<int> Question::GetCorrectOptions () const
 {
     // TODO: debug check for empty correct option for a question
 #ifdef DEBUG
@@ -71,7 +71,7 @@ void Question::AddQuestionOption (string option)
     quesOptions.push_back (option);
 }
 
-void Question::DisplayQuestion ()
+void Question::DisplayQuestion () const
 {
     std::cout << "\nQuestion " << questionID << ": " << questionText << std::endl;
     std::cout << "A) " << quesOptions[0] << std::endl;
@@ -80,16 +80,16 @@ void Question::DisplayQuestion ()
     std::cout << "D) " << quesOptions[3] << std::endl;
 }
 
-void Question::DisplayCorrectAnswers ()
+void Question::DisplayCorrectAnswers () const
 {
     std::cout << "Correct Option(s): ";
     for (int i : correctOptions) {
-        std::cout << " " << quesOptions[i];
+        std::cout << static_cast<char>('A' + i) << " ";
     }
     std::cout << std::endl;
 }
 
-bool Question::IsCorrect (string option)
+bool Question::IsCorrect (string option) const
 {
     for (int i = 0; i < quesOptions.size (); i++) {
 
@@ -111,7 +111,7 @@ bool Question::IsCorrect (string option)
 * if single answer and not multioption answer.
 * 
 */
-bool Question::IsCorrect (int index)
+bool Question::IsCorrect (int index) const
 {
     return correctOptions.find (index) != correctOptions.end ();
 }

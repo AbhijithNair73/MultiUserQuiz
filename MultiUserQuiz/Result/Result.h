@@ -18,12 +18,17 @@ using namespace std;
 class Result {
  
 public:
-                Result          (int timeLimit);
-                ~Result         ();
+                                Result                  ();
+                                ~Result                 ();
 
-    void        AddAnswer       (Answer && ans);
+    eQuesAttemptStatus          AddAnswer               (Answer & ans);
+    double                      GetCurrentScore         () const;
 
-    void        UpdateTimeElapsed (int time);
+    void                        PrintFinalResult        (bool pShowDetailedResult) const;
+
+    void                        SetTimeLimit            (unsigned int timeLimit);
+    void                        UpdateTimeElapsed       (unsigned int pTimeElapsedMs);
+    unsigned int                GetTimeElapsedInQuiz    () const;
 
 private:
 
@@ -33,15 +38,14 @@ private:
     unordered_map <unsigned int, eQuesAttemptStatus> tracker_map;
 
     // score
-    double curr_score = 0;
+    double vCurrScore = 0;
 
-    const double correctReward      = 1.0;         // reward for correct answer
-    const double incorrectPenalty   = 0.25;     // penalty for incorrect answer
-    const double partialReward      = 0.5;         // reward for partially correct answer
+    const double correctReward      = 1.0;          // reward for correct answer
+    const double incorrectPenalty   = 0.25;         // penalty for incorrect answer
+    const double partialReward      = 0.5;          // reward for partially correct answer
 
     // mode
-
-    int totalTimeElapsed;  // Used in Mode 2
-    int totalTimeLimit;    // Used in Mode 2
+    unsigned int vTotalTimeElapsed;  // Used in Mode 2
+    unsigned int vTotalTimeLimit;    // Used in Mode 2
 
 };

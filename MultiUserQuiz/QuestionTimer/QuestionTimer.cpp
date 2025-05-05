@@ -17,28 +17,29 @@ QuestionTimer::~QuestionTimer ()
 
 void QuestionTimer::Start ()
 {
+    Stop ();  // Ensure previous thread is cleaned up
+
+    {
+        std::lock_guard<std::mutex> lock (mtx);
+        answered.store(false);
+        running.store(true);
+    }
+
     start_time = std::chrono::steady_clock::now ();
-    running = true;
-    answered = false;
 
     timer_thread = std::thread ([this] () {
-
         std::unique_lock<std::mutex> lock (mtx);
-
         if (cv.wait_for (lock, std::chrono::milliseconds (time_limit_ms), [this] () { return answered.load (); })) {
-
-            // User answered before timeout.
-            running = false;
+            running.store(false);
             return;
         }
 
-        // Time ran out and question wasn't answered.
-        if (!answered) {
+        if (!answered.load ()) {
             end_time = std::chrono::steady_clock::now ();
-            running = false;
+            running.store(false);
             timeout_callback ();
         }
-     });
+    });
 }
 
 // This function is called when the user answers the question.
@@ -47,12 +48,28 @@ void QuestionTimer::Start ()
 // "submit"/"EndTest" on the end.
 void QuestionTimer::Stop ()
 {
-    std::lock_guard<std::mutex> lock (mtx);
-    if (!answered && running) {
-        answered = true;
+    {
+        std::lock_guard<std::mutex> lock (mtx);
+
+        // Either the question was answered or the timer thread exited (timed out)
+        if (!running.load (std::memory_order_acquire)) {
+            // Still need to join any thread that might be running
+            if (timer_thread.joinable ()) {
+                timer_thread.join ();
+            }
+            return;
+        }
+
+        answered.store (true, std::memory_order_release);
         end_time = std::chrono::steady_clock::now ();
-        cv.notify_one ();  // Wake thread immediately.
+        cv.notify_one ();
     }
+
+    if (timer_thread.joinable ()) {
+        timer_thread.join ();
+    }
+
+    running.store (false, std::memory_order_release);
 }
 
 // This function returns the time left in the test and it should always be positive.

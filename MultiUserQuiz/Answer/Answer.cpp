@@ -1,6 +1,6 @@
 #include "Answer.h"
 
-Answer::Answer (unsigned int pQId): quesId(pQId)
+Answer::Answer (unsigned int pQId) : quesId (pQId)
 {
     // nothing to do
 }

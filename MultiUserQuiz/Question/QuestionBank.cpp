@@ -1,8 +1,8 @@
 #include "QuestionBank.h"
 
-QuestionBank::QuestionBank ()
+QuestionBank::QuestionBank (): vIsInitialized(false)
 {
-    // nothing to do
+    // nothing
 }
 
 QuestionBank::~QuestionBank ()
@@ -142,4 +142,19 @@ void QuestionBank::ResetQuestionBank ()
 
     // empties the map and should reduce the reference count hence leading to destruction of questions.
     quesmap.clear ();
+}
+
+bool QuestionBank::IsQuestionBankEmpty () const
+{
+    return quesmap.empty();
+}
+
+bool QuestionBank::IsQuestionBankInitialized () const
+{
+    return vIsInitialized;
+}
+
+void QuestionBank::SetQuestionBankInitialized (bool pIsInitialized)
+{
+    vIsInitialized = pIsInitialized;
 }

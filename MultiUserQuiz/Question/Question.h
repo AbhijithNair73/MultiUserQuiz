@@ -15,10 +15,10 @@ public:
                         ~Question           ();
 
                         // Getters
-    unsigned int        GetQuestionID       ();
-    string              GetQuestionText     ();
-    vector<string>      GetQuestionOptions  ();
-    unordered_set<int>  GetCorrectOptions   ();
+    unsigned int        GetQuestionID       () const;
+    string              GetQuestionText     () const;
+    vector<string>      GetQuestionOptions  () const;
+    unordered_set<int>  GetCorrectOptions   () const;
 
                         // Setters  
     void                SetQuestionID       (unsigned int questionID);
@@ -28,12 +28,12 @@ public:
 
     void                AddQuestionOption   (string option);
 
-    bool                IsCorrect           (string option);
-    bool                IsCorrect           (int index);
+    bool                IsCorrect           (string option) const;
+    bool                IsCorrect           (int index) const;
 
                         // Diplay methods
-    void                DisplayQuestion         ();
-    void                DisplayCorrectAnswers   ();
+    void                DisplayQuestion         () const;
+    void                DisplayCorrectAnswers   () const;
 
 private:
 

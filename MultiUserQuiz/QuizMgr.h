@@ -1,10 +1,15 @@
 #pragma once
 #include <iostream>
 #include <string>
+#include <set>
 #include "External/xlnt/xlnt.hpp"
 #include "Question/QuestionBank.h"
 #include "Question/Question.h"
+#include "Answer/Answer.h"
+#include "QuestionTimer/QuestionTimer.h"
+#include "User/User.h"
 #include "QuizDefs.h"
+#include "QuizConfig.h"
 
 /*
 * Currently the usage and sope of this class is not yet clear.
@@ -21,9 +26,21 @@ class QuizMgr {
                 QuizMgr                 ();
                 ~QuizMgr                ();
 
-    bool        StartQuiz               (const std::string & pFileName);
 
-    private:
+                bool        StartQuiz               ();
+                void        CreateNewUser           ();
+                bool        InitializeQuizConfigs   ();
+                bool        InitializeQuestionBank  (const std::string & excelFileName);
+                Answer      WaitForUserAnswer       (unsigned int pQuesId);
+                void        OnTimerExpired          ();
 
-    bool        InitializeQuestionBank  (const std::string & excelFileName);
+private:
+    bool        vIsMultipleAnswersAllowed;
+    bool        vIsKBCMode;
+    bool        vIsSingleUser;
+    eQuizMode   vQuizMode;
+    User *      vUser;
+
+    unsigned int vQuizTimeLimit;
+    atomic<bool> vTimedOut{false};
 };
