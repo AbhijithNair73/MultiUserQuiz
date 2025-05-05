@@ -3,6 +3,8 @@
 #include "Answer/Answer.h"
 #include <sstream>
 
+#define MAX_NUMBER_OF_CORRECT_OPTION        3
+
 enum eQuizMode {
     BULLET_TIMER_MODE,       // User has limited time per question
     TIME_BOUND_MODE,         // User has limited total time to finish the quiz

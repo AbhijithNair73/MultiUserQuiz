@@ -23,6 +23,12 @@ public:
             double              GetIncorrectAnsPenalty  () const;
             double              GetPartialAnsReward     () const;
 
+            unsigned int        GetTimeAllowedBasedOnQuizMode () const;
+
+            bool                IsSingleUser () const;
+            bool                IsMultiOptionSelect () const;
+            eQuizMode           GetQuizMode () const;
+
 private:
                                 // Ctor and Dtors
                                 QuizConfig              ();
@@ -34,24 +40,23 @@ private:
     static  int                 Parser                  (void * user, const char * section, const char * name, const char * value);
 
             // config variables.
-            eQuizMode           quizMode;
-            bool                isSingleUser;
-            bool                isMultiOptionSelect;
+            eQuizMode           vQuizMode;
+            bool                vIsSingleUser;
+            bool                vIsMultiOptionSelect;
 
             // scoring related
-            bool                isNegMarking;
+            bool                vIsNegMarking;
             double              negMarking;
             double              posMarking;
             double              paritalMarking;
 
             // time related
             union {
-                unsigned int    timePerQues;            // allowed time to attempt each question - bullet mode
-                unsigned int    totalTime;              // total time to finish the test - competitive/time bound mode.
-            } timeAllowed;
+                unsigned int    vTimePerQues;            // allowed time to attempt each question - bullet mode
+                unsigned int    vTotalQuizTime;          // total time to finish the test - competitive/time bound mode.
+            } vTimeAllowed;
 
             // result related
-            bool                isKBCMode;              // KBC mode.
-            bool                displayOnlyScore;       // only score should be displayed.
-
+            bool                vIsKBCMode;             // In KBC mode it will show the correct answer and score after each question.
+                                                        // KBC Mode should not be allowed with TIMERBOUND quiz
 };

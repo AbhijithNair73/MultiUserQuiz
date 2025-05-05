@@ -24,22 +24,26 @@ public:
     static  QuestionBank &                      GetInstance         ();
 
             // the actual object should be moved or should it be pointer, or should we allocate question object dynamically and let the quesmap hold the pointer?
-            bool                                AddQuestionToBank       (std::shared_ptr<Question> ques);
-            bool                                UpdateQuestionById      (unsigned int id, std::shared_ptr<Question> ques);
-            bool                                RemoveQuestionById      (unsigned int id);
+            bool                                AddQuestionToBank           (std::shared_ptr<Question> ques);
+            bool                                UpdateQuestionById          (unsigned int id, std::shared_ptr<Question> ques);
+            bool                                RemoveQuestionById          (unsigned int id);
 
-            std::shared_ptr<const Question>     GetQuestionById         (unsigned int id);
+            std::shared_ptr<const Question>     GetQuestionById             (unsigned int id);
 
-            unordered_set<int>                  GetCorrectOptionsById   (unsigned int id);
+            unordered_set<int>                  GetCorrectOptionsById       (unsigned int id);
 
-            unsigned int                        TotalQuestionCount      () const;
-            void                                ResetQuestionBank       ();
+            unsigned int                        TotalQuestionCount          () const;
+            void                                ResetQuestionBank           ();
+
+            bool                                IsQuestionBankEmpty         () const;
+            bool                                IsQuestionBankInitialized   () const;
+            void                                SetQuestionBankInitialized  (bool pIsInitialized);
 private:
-                                                QuestionBank            ();
-                                                ~QuestionBank           ();
+                                                QuestionBank                ();
+                                                ~QuestionBank               ();
 
-                                                QuestionBank            (const QuestionBank &) = delete;
-            QuestionBank &                      operator =              (const QuestionBank &)  = delete;
+                                                QuestionBank                (const QuestionBank &) = delete;
+            QuestionBank &                      operator =                  (const QuestionBank &)  = delete;
 
             // we have chosen shared_ptr as we wanted to return the question outside this class using GetQuestionById function.
             // where now it is returning shared_ptr outside, but after adding constness. This will ensure the object is not updated outside the class.
@@ -49,6 +53,7 @@ private:
             // So if any of the question is referred outside and question bank gets destroyed, the externally referred question will be not be deleted, but the reference 
             // count will be decremented and when finally the external reference goes out of scope or is deleted, then the 
             // shared ptr ref count will go to zero and the question will be deleted.
-            unordered_map <unsigned int, std::shared_ptr<Question>>  quesmap;                 //< Holds all the questions for the quiz
-            mutable shared_mutex                    mtx;
+            unordered_map <unsigned int, std::shared_ptr<Question>>  quesmap;                   //< Holds all the questions for the quiz
+            mutable shared_mutex                mtx;
+            bool                                vIsInitialized;                                 //< Flag to indicate if the question bank is initialized or not
 };
