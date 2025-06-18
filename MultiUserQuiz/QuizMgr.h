@@ -2,7 +2,7 @@
 #include <iostream>
 #include <string>
 #include <set>
-#include "External/xlnt/xlnt.hpp"
+#include <xlnt/xlnt.hpp>
 #include "Question/QuestionBank.h"
 #include "Question/Question.h"
 #include "Answer/Answer.h"
@@ -41,6 +41,6 @@ private:
     eQuizMode   vQuizMode;
     User *      vUser;
 
-    unsigned int vQuizTimeLimit;
+    long long   vQuizTimeLimit;
     atomic<bool> vTimedOut{false};
 };

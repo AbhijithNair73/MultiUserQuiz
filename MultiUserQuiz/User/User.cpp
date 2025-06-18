@@ -1,8 +1,9 @@
 #include "User.h"
 
-User::User ()
+User::User (const std::string & pUserName)
 {
     vResultPtr = std::make_unique<Result> ();
+    vUserName = pUserName;
 }
 
 User::~User ()
@@ -10,14 +11,39 @@ User::~User ()
     // nothing to do
 }
 
-void User::SetTotalTimeLimit (unsigned int pTotaltime)
+void User::SetStartTime (long long pStartTime)
 {
-    vResultPtr->SetTimeLimit (pTotaltime);
+    vStartTime = pStartTime;
 }
 
-void User::UpdateElapsedTimeInQuiz (unsigned int pTimeElapsed)
+long long User::GetStartTime () const
+{ 
+    return vStartTime;
+}
+
+void User::SetTotalTimeLimit (long long pTotaltime)
+{
+    vResultPtr->SetTotalTimeLimit (pTotaltime);
+}
+
+long long User::GetTotalTimeLimit () const
+{
+    return vResultPtr->GetTotalTimeLimit ();
+}
+
+void User::UpdateElapsedTimeInQuiz (long long pTimeElapsed)
 {
     vResultPtr->UpdateTimeElapsed (pTimeElapsed);
+}
+
+void User::AddToElapsedTimeInQuiz (long long pTimeElapsed)
+{
+    vResultPtr->AddToElapsedTime (pTimeElapsed);
+}
+
+long long User::GetElapsedTime ()
+{
+    return vResultPtr->GetTimeElapsedInQuiz ();
 }
 
 eQuesAttemptStatus User::SetAndValidateUserAnswer (Answer & pAns)
@@ -33,4 +59,9 @@ double User::GetUserCurrentScore ()
 void User::ShowFinalScore (bool pShowIncorrectAttempts)
 {
     vResultPtr->PrintFinalResult (pShowIncorrectAttempts);
+}
+
+std::vector<unsigned int> User::GetUnattemptedQuestionIds () const
+{
+    return vResultPtr->GetUnattemptedQuestionIds ();
 }

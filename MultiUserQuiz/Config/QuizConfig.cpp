@@ -1,7 +1,7 @@
 #include "QuizConfig.h"
 #include <algorithm>
 #include <string>
-#include "../External/ini/ini.h"
+#include <ini/ini.h>
 
 const char * CONFIG_FILE_NAME = "quiz_config.ini";
 
@@ -130,7 +130,7 @@ double QuizConfig::GetPartialAnsReward () const
     return paritalMarking;
 }
 
-unsigned int QuizConfig::GetTimeAllowedBasedOnQuizMode () const
+long long QuizConfig::GetTimeAllowedBasedOnQuizMode () const
 {
     return (vQuizMode == BULLET_TIMER_MODE) ? vTimeAllowed.vTimePerQues : vTimeAllowed.vTotalQuizTime;
 }
@@ -138,6 +138,11 @@ unsigned int QuizConfig::GetTimeAllowedBasedOnQuizMode () const
 bool QuizConfig::IsSingleUser () const
 {
     return vIsSingleUser;
+}
+
+bool QuizConfig::IsKBCMode () const
+{
+    return vIsKBCMode;
 }
 
 bool QuizConfig::IsMultiOptionSelect () const

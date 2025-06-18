@@ -21,13 +21,17 @@ enum eQuesAttemptStatus {
 
 namespace QuizHelper {
 
-    eQuesAttemptStatus ValidateUserAnswer (const Answer & ans);
+    eQuesAttemptStatus ValidateUserAnswer               (const Answer & ans);
 
-    std::shared_ptr<Question> MakeQuestionFromExcelRow (const std::string & question_number_str,
-                                                        const std::string & question_text, 
-                                                        const std::string & option_a, 
-                                                        const std::string & option_b, 
-                                                        const std::string & option_c, 
-                                                        const std::string & option_d, 
-                                                        const std::string & correct_options_str);
+    std::shared_ptr<Question> MakeQuestionFromExcelRow  (const std::string & question_number_str,
+                                                         const std::string & question_text, 
+                                                         const std::string & option_a, 
+                                                         const std::string & option_b, 
+                                                         const std::string & option_c, 
+                                                         const std::string & option_d, 
+                                                         const std::string & correct_options_str);
+
+    long long           timestamp_in_ms                 (std::chrono::system_clock::time_point tp);
+    
+    long long           get_current_time_in_ms          ();
 }

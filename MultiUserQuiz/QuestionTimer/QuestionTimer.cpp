@@ -1,6 +1,6 @@
 #include "QuestionTimer.h"
 
-QuestionTimer::QuestionTimer (int limit_ms, std::function<void ()> callback)
+QuestionTimer::QuestionTimer (long long limit_ms, std::function<void ()> callback)
     : time_limit_ms (limit_ms), timeout_callback (callback)
 { }
 

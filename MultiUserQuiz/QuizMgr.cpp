@@ -24,7 +24,7 @@ QuizMgr::~QuizMgr ()
 */
 void QuizMgr::CreateNewUser ()
 {
-    vUser = new User();
+    vUser = new User("test_user");
     if (!vUser) {
         std::cerr << "Error: Could not create user." << std::endl;
         return;
@@ -120,7 +120,7 @@ bool QuizMgr::StartQuiz ()
         } else {
 
             // update the time elapsed in Timebound mode after every attempt
-            vUser->UpdateElapsedTimeInQuiz (quizTimer->GetElapsedTimeMillis ());
+            vUser->AddToElapsedTimeInQuiz (quizTimer->GetElapsedTimeMillis ());
         }
 
         status = vUser->SetAndValidateUserAnswer (answer);

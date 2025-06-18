@@ -26,9 +26,13 @@ public:
 
     void                        PrintFinalResult        (bool pShowDetailedResult) const;
 
-    void                        SetTimeLimit            (unsigned int timeLimit);
-    void                        UpdateTimeElapsed       (unsigned int pTimeElapsedMs);
-    unsigned int                GetTimeElapsedInQuiz    () const;
+    void                        SetTotalTimeLimit       (long long timeLimit);
+    long long                   GetTotalTimeLimit       () const;
+    void                        UpdateTimeElapsed       (long long pTimeElapsedMs);
+    void                        AddToElapsedTime        (long long pTimeElapsedMs);
+    long long                   GetTimeElapsedInQuiz    () const;
+
+    std::vector<unsigned int>   GetUnattemptedQuestionIds () const;
 
 private:
 
@@ -45,7 +49,7 @@ private:
     const double partialReward      = 0.5;          // reward for partially correct answer
 
     // mode
-    unsigned int vTotalTimeElapsed;  // Used in Mode 2
-    unsigned int vTotalTimeLimit;    // Used in Mode 2
+    long long vTotalTimeElapsed;  // Used in Mode 2
+    long long vTotalTimeLimit;    // Used in Mode 2
 
 };

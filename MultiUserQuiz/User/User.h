@@ -13,16 +13,31 @@
 
 class User {
     public:
-
-                                User                        ();
+                                User                        (const std::string & pUserName);
                                 ~User                       ();
 
-        void                    SetTotalTimeLimit           (unsigned int pTotaltime);
-        void                    UpdateElapsedTimeInQuiz     (unsigned int pTimeElapsed);
+        void                    SetStartTime                (long long pTotaltime);
+        long long               GetStartTime                () const;
+
+        void                    SetTotalTimeLimit           (long long pTotaltime);
+        long long               GetTotalTimeLimit           () const;
+        void                    UpdateElapsedTimeInQuiz     (long long pTimeElapsed);
+        void                    AddToElapsedTimeInQuiz      (long long pTimeElapsed);
+        long long               GetElapsedTime              ();
+
         eQuesAttemptStatus      SetAndValidateUserAnswer    (Answer & pAns);
         double                  GetUserCurrentScore         ();
         void                    ShowFinalScore              (bool pShowIncorrectAttempts);
+
+        std::vector<unsigned int> GetUnattemptedQuestionIds () const;
+
     private:
 
-        std::unique_ptr<Result> vResultPtr;                     // Result object for this user
+        long long               vStartTime;                 // stores the julian time when the quiz is started. will be resetted 
+                                                            // when the quiz is restarted. This parameter is not needed for bullet mode as the time is managed on client
+                                                            // and is needed in time-bound mode for calculation of time remaining in case of reconnection or relogin.
+
+        std::unique_ptr<Result> vResultPtr;                 // Result object for this user
+        std::string             vUserName;                  // User name
 };
+

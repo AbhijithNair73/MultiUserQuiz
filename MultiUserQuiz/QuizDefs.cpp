@@ -88,4 +88,15 @@ namespace QuizHelper
         return std::make_shared<Question> (question_id, question_text, options, correct_options);
     }
 
+    long long timestamp_in_ms (std::chrono::system_clock::time_point tp)
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            tp.time_since_epoch ())
+            .count ();
+    }
+
+    long long get_current_time_in_ms ()
+    {
+        return timestamp_in_ms (std::chrono::system_clock::now ());
+    }
 }

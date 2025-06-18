@@ -23,11 +23,12 @@ public:
             double              GetIncorrectAnsPenalty  () const;
             double              GetPartialAnsReward     () const;
 
-            unsigned int        GetTimeAllowedBasedOnQuizMode () const;
+            long long           GetTimeAllowedBasedOnQuizMode () const;
 
             bool                IsSingleUser () const;
             bool                IsMultiOptionSelect () const;
             eQuizMode           GetQuizMode () const;
+            bool                IsKBCMode () const;
 
 private:
                                 // Ctor and Dtors
@@ -52,8 +53,8 @@ private:
 
             // time related
             union {
-                unsigned int    vTimePerQues;            // allowed time to attempt each question - bullet mode
-                unsigned int    vTotalQuizTime;          // total time to finish the test - competitive/time bound mode.
+                long long       vTimePerQues;            // allowed time to attempt each question - bullet mode
+                long long       vTotalQuizTime;          // total time to finish the test - competitive/time bound mode.
             } vTimeAllowed;
 
             // result related

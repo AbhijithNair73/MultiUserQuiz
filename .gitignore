@@ -361,3 +361,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# to explictly not ignore .lib and .so files
+!*.so
+!*.lib
+!bin/*.so
+!bin/*.lib

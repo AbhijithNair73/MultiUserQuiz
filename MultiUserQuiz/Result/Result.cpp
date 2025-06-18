@@ -17,22 +17,48 @@ Result::~Result ()
     // nothing to do.
 }
 
-// This is only used for timebound mode
-void Result::SetTimeLimit (unsigned int timeLimit)
+void Result::SetTotalTimeLimit (long long timeLimit)
 {
     vTotalTimeLimit = timeLimit;
 }
 
-void Result::UpdateTimeElapsed (unsigned int pTimeElapsedMs)
+long long Result::GetTotalTimeLimit () const
+{
+    return vTotalTimeLimit;
+}
+
+void Result::UpdateTimeElapsed (long long pTimeElapsedMs)
 {
     vTotalTimeElapsed = pTimeElapsedMs;
 }
 
-unsigned int Result::GetTimeElapsedInQuiz () const
+void Result::AddToElapsedTime (long long pTimeElapsedMs)
+{
+    vTotalTimeElapsed += pTimeElapsedMs;
+}
+
+long long Result::GetTimeElapsedInQuiz () const
 {
     return vTotalTimeElapsed;
 }
 
+std::vector<unsigned int> Result::GetUnattemptedQuestionIds () const
+{
+    std::vector<unsigned int> unattempted;
+
+    const auto totalQuestions = QuestionBank::GetInstance ().TotalQuestionCount ();
+
+    for (unsigned int id = 1; id <= totalQuestions; ++id) {
+
+        auto it = tracker_map.find (id);
+
+        if (it == tracker_map.end () || it->second == UNATTEMPTED) {
+            unattempted.push_back (id);
+        }
+    }
+
+    return unattempted;
+}
 
 eQuesAttemptStatus Result::AddAnswer (Answer & ans)
 {
@@ -42,6 +68,7 @@ eQuesAttemptStatus Result::AddAnswer (Answer & ans)
     auto it = tracker_map.find (quesId);
 
     // If already attempted, revert previous score
+    // TODO: Should not be allowed for KBC mode
     if (it != tracker_map.end ()) {
 
         if (it->second == newStatus) {
@@ -140,5 +167,4 @@ void Result::PrintFinalResult (bool pShowDetailResult) const
 
         std::cout << "\n=============================\n";
     }
-
 }
