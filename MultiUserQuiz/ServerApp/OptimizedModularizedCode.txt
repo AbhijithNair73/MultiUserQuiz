@@ -1,0 +1,711 @@
+// SessionManager.hpp
+#pragma once
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <shared_mutex>
+#include <websocketpp/connection.hpp>
+#include "User.hpp"
+
+using connection_hdl = websocketpp::connection_hdl;
+
+class SessionManager {
+public:
+    static SessionManager& GetInstance();
+    
+    // Session management
+    bool LoginUser(connection_hdl hdl, const std::string& username);
+    void LogoutUser(connection_hdl hdl);
+    bool IsUserLoggedIn(const std::string& username) const;
+    
+    // User access
+    std::shared_ptr<User> GetUser(connection_hdl hdl) const;
+    std::shared_ptr<User> GetUser(const std::string& username) const;
+    std::string GetUsername(connection_hdl hdl) const;
+    
+    // Quiz state management
+    bool StartQuiz(const std::string& username);
+    bool HasQuizStarted(const std::string& username) const;
+    
+private:
+    SessionManager() = default;
+    
+    mutable std::shared_mutex mutex_;
+    std::map<connection_hdl, std::string, std::owner_less<connection_hdl>> hdl_to_username_;
+    std::unordered_map<std::string, std::shared_ptr<User>> username_to_user_;
+};
+
+// SessionManager.cpp
+#include "SessionManager.hpp"
+
+SessionManager& SessionManager::GetInstance() {
+    static SessionManager instance;
+    return instance;
+}
+
+bool SessionManager::LoginUser(connection_hdl hdl, const std::string& username) {
+    std::unique_lock lock(mutex_);
+    
+    // Check if user already logged in from another connection
+    for (const auto& [existing_hdl, existing_user] : hdl_to_username_) {
+        if (existing_user == username) {
+            return false; // Already logged in
+        }
+    }
+    
+    hdl_to_username_[hdl] = username;
+    return true;
+}
+
+void SessionManager::LogoutUser(connection_hdl hdl) {
+    std::unique_lock lock(mutex_);
+    
+    auto it = hdl_to_username_.find(hdl);
+    if (it != hdl_to_username_.end()) {
+        auto username = it->second;
+        
+        // Handle disconnection time calculation if quiz was started
+        auto user_it = username_to_user_.find(username);
+        if (user_it != username_to_user_.end()) {
+            // Calculate elapsed time on disconnection
+            user_it->second->HandleDisconnection();
+        }
+        
+        hdl_to_username_.erase(it);
+    }
+}
+
+bool SessionManager::IsUserLoggedIn(const std::string& username) const {
+    std::shared_lock lock(mutex_);
+    
+    for (const auto& [hdl, user] : hdl_to_username_) {
+        if (user == username) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::shared_ptr<User> SessionManager::GetUser(connection_hdl hdl) const {
+    std::shared_lock lock(mutex_);
+    
+    auto hdl_it = hdl_to_username_.find(hdl);
+    if (hdl_it == hdl_to_username_.end()) {
+        return nullptr;
+    }
+    
+    auto user_it = username_to_user_.find(hdl_it->second);
+    return (user_it != username_to_user_.end()) ? user_it->second : nullptr;
+}
+
+std::shared_ptr<User> SessionManager::GetUser(const std::string& username) const {
+    std::shared_lock lock(mutex_);
+    
+    auto it = username_to_user_.find(username);
+    return (it != username_to_user_.end()) ? it->second : nullptr;
+}
+
+std::string SessionManager::GetUsername(connection_hdl hdl) const {
+    std::shared_lock lock(mutex_);
+    
+    auto it = hdl_to_username_.find(hdl);
+    return (it != hdl_to_username_.end()) ? it->second : "";
+}
+
+bool SessionManager::StartQuiz(const std::string& username) {
+    std::unique_lock lock(mutex_);
+    
+    if (username_to_user_.find(username) != username_to_user_.end()) {
+        return false; // Quiz already started
+    }
+    
+    username_to_user_[username] = std::make_shared<User>(username);
+    return true;
+}
+
+bool SessionManager::HasQuizStarted(const std::string& username) const {
+    std::shared_lock lock(mutex_);
+    return username_to_user_.find(username) != username_to_user_.end();
+}
+
+// QuizHandler.hpp
+#pragma once
+#include <nlohmann/json.hpp>
+#include <websocketpp/connection.hpp>
+#include "SessionManager.hpp"
+
+using json = nlohmann::json;
+using connection_hdl = websocketpp::connection_hdl;
+
+enum class RequestResult {
+    SUCCESS,
+    ERROR_NOT_LOGGED_IN,
+    ERROR_INVALID_CREDENTIALS,
+    ERROR_ALREADY_LOGGED_IN,
+    ERROR_QUIZ_NOT_STARTED,
+    ERROR_QUIZ_ALREADY_STARTED,
+    ERROR_TIME_ELAPSED,
+    ERROR_INVALID_QUESTION_ID,
+    ERROR_UNKNOWN_COMMAND
+};
+
+struct RequestResponse {
+    RequestResult result;
+    json data;
+    
+    RequestResponse(RequestResult r, json d = {}) : result(r), data(std::move(d)) {}
+};
+
+class QuizHandler {
+public:
+    static RequestResponse HandleLogin(connection_hdl hdl, const json& request);
+    static RequestResponse HandleStartQuiz(connection_hdl hdl);
+    static RequestResponse HandleContinueQuiz(connection_hdl hdl);
+    static RequestResponse HandleFetchQuestion(connection_hdl hdl, const json& request);
+    static RequestResponse HandleSubmitAnswer(connection_hdl hdl, const json& request);
+    static RequestResponse HandleFetchUnattempted(connection_hdl hdl);
+    static RequestResponse HandleEndQuiz(connection_hdl hdl);
+    static RequestResponse HandleLogout(connection_hdl hdl);
+    
+private:
+    static bool ValidateUser(connection_hdl hdl, std::shared_ptr<User>& user);
+    static bool CheckTimeElapsed(std::shared_ptr<User> user);
+    static long long CalculateQuestionTimer(std::shared_ptr<User> user);
+    static json CreateErrorResponse(const std::string& message);
+};
+
+// QuizHandler.cpp
+#include "QuizHandler.hpp"
+#include "QuizConfig.h"
+#include "QuestionBank.h"
+#include "QuizHelper.h"
+
+RequestResponse QuizHandler::HandleLogin(connection_hdl hdl, const json& request) {
+    std::string username = request.value("username", "");
+    std::string password = request.value("password", "");
+    
+    // TODO: Implement proper authentication
+    if (password != "1234") {
+        return {RequestResult::ERROR_INVALID_CREDENTIALS, 
+                {{"type", "LOGIN_FAIL"}, {"reason", "Invalid credentials"}}};
+    }
+    
+    auto& session_mgr = SessionManager::GetInstance();
+    
+    if (session_mgr.IsUserLoggedIn(username)) {
+        return {RequestResult::ERROR_ALREADY_LOGGED_IN,
+                {{"type", "LOGIN_FAIL"}, {"reason", "User already logged in"}}};
+    }
+    
+    if (!session_mgr.LoginUser(hdl, username)) {
+        return {RequestResult::ERROR_ALREADY_LOGGED_IN,
+                {{"type", "LOGIN_FAIL"}, {"reason", "Login failed"}}};
+    }
+    
+    json response = {{"type", "LOGIN_OK"}, {"welcome", username}};
+    
+    // Check if reconnection (quiz already started)
+    if (session_mgr.HasQuizStarted(username)) {
+        response["note"] = "Reconnected";
+    }
+    
+    return {RequestResult::SUCCESS, response};
+}
+
+RequestResponse QuizHandler::HandleStartQuiz(connection_hdl hdl) {
+    auto& session_mgr = SessionManager::GetInstance();
+    std::string username = session_mgr.GetUsername(hdl);
+    
+    if (username.empty()) {
+        return {RequestResult::ERROR_NOT_LOGGED_IN,
+                CreateErrorResponse("Please login first")};
+    }
+    
+    if (session_mgr.HasQuizStarted(username)) {
+        return {RequestResult::ERROR_QUIZ_ALREADY_STARTED,
+                CreateErrorResponse("Quiz already started")};
+    }
+    
+    if (!session_mgr.StartQuiz(username)) {
+        return {RequestResult::ERROR_QUIZ_ALREADY_STARTED,
+                CreateErrorResponse("Failed to start quiz")};
+    }
+    
+    auto user = session_mgr.GetUser(username);
+    if (!user) {
+        return {RequestResult::ERROR_QUIZ_NOT_STARTED,
+                CreateErrorResponse("Failed to create user session")};
+    }
+    
+    // Initialize user based on quiz mode
+    QuizConfig& cfg = QuizConfig::GetInstance();
+    unsigned int ques_count = QuestionBank::GetInstance().TotalQuestionCount();
+    eQuizMode quiz_mode = cfg.GetQuizMode();
+    long long time_allowed_ms = cfg.GetTimeAllowedBasedOnQuizMode() * 1000;
+    long long end_time_ms = 0;
+    
+    user->InitializeForQuiz(quiz_mode, time_allowed_ms, ques_count);
+    
+    if (quiz_mode == STRICT_TIME_BOUND_MODE) {
+        end_time_ms = user->GetEndTimeInMs();
+    }
+    
+    return {RequestResult::SUCCESS, {
+        {"type", "QUIZ_STARTED"},
+        {"total_questions", ques_count},
+        {"quiz_mode", quiz_mode},
+        {"is_multioption_allowed", cfg.IsMultiOptionSelect()},
+        {"is_kbc_mode", cfg.IsKBCMode()},
+        {"total_time", user->GetTotalTimeLimit()},
+        {"end_time", end_time_ms}
+    }};
+}
+
+RequestResponse QuizHandler::HandleContinueQuiz(connection_hdl hdl) {
+    std::shared_ptr<User> user;
+    if (!ValidateUser(hdl, user)) {
+        return {RequestResult::ERROR_NOT_LOGGED_IN,
+                CreateErrorResponse("Please login first")};
+    }
+    
+    if (!user) {
+        return {RequestResult::ERROR_QUIZ_NOT_STARTED,
+                CreateErrorResponse("Quiz was not started")};
+    }
+    
+    if (CheckTimeElapsed(user)) {
+        return {RequestResult::ERROR_TIME_ELAPSED,
+                CreateErrorResponse("Time has elapsed")};
+    }
+    
+    const auto unattempted = user->GetUnattemptedQuestionIds();
+    if (unattempted.empty()) {
+        return {RequestResult::SUCCESS, {{"type", "QUIZ_ENDED"}}};
+    }
+    
+    QuizConfig& cfg = QuizConfig::GetInstance();
+    unsigned int ques_count = QuestionBank::GetInstance().TotalQuestionCount();
+    
+    return {RequestResult::SUCCESS, {
+        {"type", "QUIZ_RESTARTED"},
+        {"total_questions", ques_count},
+        {"quiz_mode", cfg.GetQuizMode()},
+        {"is_multioption_allowed", cfg.IsMultiOptionSelect()},
+        {"is_kbc_mode", cfg.IsKBCMode()},
+        {"total_time", user->GetTotalTimeLimit()},
+        {"updated_elapsed_time", user->GetElapsedTime()},
+        {"end_time", user->GetEndTimeInMs()},
+        {"question_ids", unattempted}
+    }};
+}
+
+RequestResponse QuizHandler::HandleFetchQuestion(connection_hdl hdl, const json& request) {
+    std::shared_ptr<User> user;
+    if (!ValidateUser(hdl, user)) {
+        return {RequestResult::ERROR_NOT_LOGGED_IN,
+                CreateErrorResponse("Please login first")};
+    }
+    
+    if (CheckTimeElapsed(user)) {
+        return {RequestResult::ERROR_TIME_ELAPSED,
+                CreateErrorResponse("Time has elapsed")};
+    }
+    
+    unsigned int qid = request.value("question_id", 0);
+    QuestionBank& qb = QuestionBank::GetInstance();
+    
+    if (qid <= 0 || qid > qb.TotalQuestionCount()) {
+        return {RequestResult::ERROR_INVALID_QUESTION_ID,
+                CreateErrorResponse("Invalid question ID")};
+    }
+    
+    user->SetLastActivityTimeInMs();
+    
+    auto question = qb.GetQuestionById(qid);
+    
+    return {RequestResult::SUCCESS, {
+        {"type", "QUESTION"},
+        {"id", question->GetQuestionID()},
+        {"text", question->GetQuestionText()},
+        {"options", question->GetQuestionOptions()},
+        {"total_time", user->GetTotalTimeLimit()},
+        {"updated_elapsed_time", user->GetElapsedTime()},
+        {"question_timer", CalculateQuestionTimer(user)}
+    }};
+}
+
+RequestResponse QuizHandler::HandleSubmitAnswer(connection_hdl hdl, const json& request) {
+    std::shared_ptr<User> user;
+    if (!ValidateUser(hdl, user)) {
+        return {RequestResult::ERROR_NOT_LOGGED_IN,
+                CreateErrorResponse("Please login first")};
+    }
+    
+    if (CheckTimeElapsed(user)) {
+        return {RequestResult::ERROR_TIME_ELAPSED,
+                CreateErrorResponse("Time has elapsed")};
+    }
+    
+    unsigned int qid = request.value("question_id", 0);
+    QuestionBank& qb = QuestionBank::GetInstance();
+    
+    if (qid <= 0 || qid > qb.TotalQuestionCount()) {
+        return {RequestResult::ERROR_INVALID_QUESTION_ID,
+                CreateErrorResponse("Invalid question ID")};
+    }
+    
+    user->SetLastActivityTimeInMs();
+    
+    Answer ans(qid);
+    for (int op : request.value("selected_options", std::vector<int>{})) {
+        ans.SetSelectedOp(op);
+    }
+    
+    long long time_to_attempt_ms = request.value("time_to_attempt_in_ms", 0);
+    user->AddToElapsedTimeInQuiz(time_to_attempt_ms);
+    
+    eQuesAttemptStatus status = user->SetAndValidateUserAnswer(ans);
+    double score = user->GetUserCurrentScore();
+    
+    return {RequestResult::SUCCESS, {
+        {"type", "ANSWER_SUBMITTED"},
+        {"question_id", qid},
+        {"status", static_cast<int>(status)},
+        {"score", score},
+        {"total_time", user->GetTotalTimeLimit()},
+        {"updated_elapsed_time", user->GetElapsedTime()}
+    }};
+}
+
+RequestResponse QuizHandler::HandleFetchUnattempted(connection_hdl hdl) {
+    std::shared_ptr<User> user;
+    if (!ValidateUser(hdl, user)) {
+        return {RequestResult::ERROR_NOT_LOGGED_IN,
+                CreateErrorResponse("Please login first")};
+    }
+    
+    if (CheckTimeElapsed(user)) {
+        return {RequestResult::ERROR_TIME_ELAPSED,
+                CreateErrorResponse("Time has elapsed")};
+    }
+    
+    const auto unattempted = user->GetUnattemptedQuestionIds();
+    if (unattempted.empty()) {
+        return {RequestResult::SUCCESS, {{"type", "QUIZ_ENDED"}}};
+    }
+    
+    return {RequestResult::SUCCESS, {
+        {"type", "UNATTEMPTED_QUESTIONS"},
+        {"question_ids", unattempted}
+    }};
+}
+
+RequestResponse QuizHandler::HandleEndQuiz(connection_hdl hdl) {
+    std::shared_ptr<User> user;
+    if (!ValidateUser(hdl, user)) {
+        return {RequestResult::ERROR_NOT_LOGGED_IN,
+                CreateErrorResponse("Please login first")};
+    }
+    
+    // TODO: Generate and return quiz results
+    return {RequestResult::SUCCESS, {
+        {"type", "QUIZ_ENDED"},
+        {"score", user->GetUserCurrentScore()}
+    }};
+}
+
+RequestResponse QuizHandler::HandleLogout(connection_hdl hdl) {
+    auto& session_mgr = SessionManager::GetInstance();
+    std::string username = session_mgr.GetUsername(hdl);
+    
+    if (!username.empty()) {
+        session_mgr.LogoutUser(hdl);
+    }
+    
+    return {RequestResult::SUCCESS, {
+        {"type", "LOGOUT_OK"},
+        {"Bye", username}
+    }};
+}
+
+bool QuizHandler::ValidateUser(connection_hdl hdl, std::shared_ptr<User>& user) {
+    auto& session_mgr = SessionManager::GetInstance();
+    user = session_mgr.GetUser(hdl);
+    return user != nullptr;
+}
+
+bool QuizHandler::CheckTimeElapsed(std::shared_ptr<User> user) {
+    if (!user) return true;
+    
+    QuizConfig& cfg = QuizConfig::GetInstance();
+    eQuizMode mode = cfg.GetQuizMode();
+    
+    switch (mode) {
+        case BULLET_TIMER_MODE:
+            return false; // No time checking in bullet mode
+            
+        case STRICT_TIME_BOUND_MODE: {
+            long long current_time = QuizHelper::get_current_time_in_ms();
+            return current_time >= user->GetEndTimeInMs();
+        }
+        
+        case TIME_BOUND_MODE: {
+            return user->GetElapsedTime() >= user->GetTotalTimeLimit();
+        }
+        
+        default:
+            return false;
+    }
+}
+
+long long QuizHandler::CalculateQuestionTimer(std::shared_ptr<User> user) {
+    QuizConfig& cfg = QuizConfig::GetInstance();
+    eQuizMode mode = cfg.GetQuizMode();
+    
+    switch (mode) {
+        case BULLET_TIMER_MODE:
+            return cfg.GetTimeAllowedBasedOnQuizMode() * 1000;
+            
+        case TIME_BOUND_MODE:
+            return user->GetTotalTimeLimit() - user->GetElapsedTime();
+            
+        case STRICT_TIME_BOUND_MODE:
+            return user->GetEndTimeInMs() - QuizHelper::get_current_time_in_ms();
+            
+        default:
+            return 0;
+    }
+}
+
+json QuizHandler::CreateErrorResponse(const std::string& message) {
+    return {{"type", "ERROR"}, {"message", message}};
+}
+
+// ConnectionManager.hpp
+#pragma once
+#include <websocketpp/config/asio.hpp>
+#include <websocketpp/server.hpp>
+#include <thread>
+#include <vector>
+
+using server = websocketpp::server<websocketpp::config::asio_tls>;
+using connection_hdl = websocketpp::connection_hdl;
+
+class ConnectionManager {
+public:
+    static ConnectionManager& GetInstance();
+    
+    void StartServer(int port = 9002, int num_threads = 0);
+    void StopServer();
+    
+private:
+    ConnectionManager() = default;
+    
+    // WebSocket event handlers
+    static std::shared_ptr<asio::ssl::context> OnTlsInit(connection_hdl hdl);
+    static void OnMessage(server* s, connection_hdl hdl, server::message_ptr msg);
+    static void OnOpen(server* s, connection_hdl hdl);
+    static void OnClose(server* s, connection_hdl hdl);
+    
+    // Request processing
+    static json ProcessRequest(connection_hdl hdl, const json& request);
+    
+    server server_;
+    std::vector<std::thread> thread_pool_;
+    bool running_ = false;
+};
+
+// ConnectionManager.cpp
+#include "ConnectionManager.hpp"
+#include "QuizHandler.hpp"
+#include <iostream>
+
+ConnectionManager& ConnectionManager::GetInstance() {
+    static ConnectionManager instance;
+    return instance;
+}
+
+void ConnectionManager::StartServer(int port, int num_threads) {
+    if (running_) {
+        std::cerr << "Server is already running" << std::endl;
+        return;
+    }
+    
+    try {
+        server_.set_access_channels(websocketpp::log::alevel::none);
+        server_.init_asio();
+        server_.set_tls_init_handler(&OnTlsInit);
+        server_.set_message_handler(std::bind(&OnMessage, &server_, std::placeholders::_1, std::placeholders::_2));
+        server_.set_open_handler(std::bind(&OnOpen, &server_, std::placeholders::_1));
+        server_.set_close_handler(std::bind(&OnClose, &server_, std::placeholders::_1));
+        
+        server_.listen(port);
+        server_.start_accept();
+        
+        if (num_threads <= 0) {
+            num_threads = std::thread::hardware_concurrency();
+        }
+        
+        std::cout << "Starting server on port " << port << " with " << num_threads << " threads" << std::endl;
+        
+        running_ = true;
+        
+        for (int i = 0; i < num_threads; ++i) {
+            thread_pool_.emplace_back([this]() {
+                server_.run();
+            });
+        }
+        
+        for (auto& t : thread_pool_) {
+            t.join();
+        }
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Server error: " << e.what() << std::endl;
+        running_ = false;
+    }
+}
+
+void ConnectionManager::StopServer() {
+    if (running_) {
+        server_.stop();
+        running_ = false;
+        
+        for (auto& t : thread_pool_) {
+            if (t.joinable()) {
+                t.join();
+            }
+        }
+        thread_pool_.clear();
+    }
+}
+
+std::shared_ptr<asio::ssl::context> ConnectionManager::OnTlsInit(connection_hdl hdl) {
+    auto ctx = std::make_shared<asio::ssl::context>(asio::ssl::context::tlsv12);
+    
+    try {
+        ctx->set_options(
+            asio::ssl::context::default_workarounds |
+            asio::ssl::context::no_sslv2 |
+            asio::ssl::context::single_dh_use);
+        
+        ctx->use_certificate_chain_file("server.crt");
+        ctx->use_private_key_file("server.key", asio::ssl::context::pem);
+        
+        std::cout << "TLS init succeeded." << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "TLS init failed: " << e.what() << std::endl;
+    }
+    
+    return ctx;
+}
+
+void ConnectionManager::OnMessage(server* s, connection_hdl hdl, server::message_ptr msg) {
+    try {
+#ifdef DEBUG
+        auto con = s->get_con_from_hdl(hdl);
+        std::string client_info = con->get_remote_endpoint();
+        std::cout << "[MESSAGE] From " << client_info << ": " << msg->get_payload() << std::endl;
+#endif
+        
+        json request = json::parse(msg->get_payload());
+        json response = ProcessRequest(hdl, request);
+        
+        s->send(hdl, response.dump(), websocketpp::frame::opcode::text);
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Message handling exception: " << e.what() << std::endl;
+        
+        json error_response = {{"type", "ERROR"}, {"message", "Invalid request format"}};
+        s->send(hdl, error_response.dump(), websocketpp::frame::opcode::text);
+    }
+}
+
+void ConnectionManager::OnOpen(server* s, connection_hdl hdl) {
+    auto con = s->get_con_from_hdl(hdl);
+    std::string remote = con->get_remote_endpoint();
+    std::cout << "[CONNECTED] " << remote << std::endl;
+}
+
+void ConnectionManager::OnClose(server* s, connection_hdl hdl) {
+    SessionManager::GetInstance().LogoutUser(hdl);
+    std::cout << "[DISCONNECTED]" << std::endl;
+}
+
+json ConnectionManager::ProcessRequest(connection_hdl hdl, const json& request) {
+    std::string type = request.value("type", "");
+    
+    RequestResponse response;
+    
+    if (type == "LOGIN") {
+        response = QuizHandler::HandleLogin(hdl, request);
+    } else if (type == "START_QUIZ") {
+        response = QuizHandler::HandleStartQuiz(hdl);
+    } else if (type == "CONTINUE_QUIZ") {
+        response = QuizHandler::HandleContinueQuiz(hdl);
+    } else if (type == "FETCH_QUESTION") {
+        response = QuizHandler::HandleFetchQuestion(hdl, request);
+    } else if (type == "SUBMIT_ANSWER") {
+        response = QuizHandler::HandleSubmitAnswer(hdl, request);
+    } else if (type == "FETCH_UNATTEMPTED") {
+        response = QuizHandler::HandleFetchUnattempted(hdl);
+    } else if (type == "END_QUIZ") {
+        response = QuizHandler::HandleEndQuiz(hdl);
+    } else if (type == "LOGOUT") {
+        response = QuizHandler::HandleLogout(hdl);
+    } else {
+        response = {RequestResult::ERROR_UNKNOWN_COMMAND, 
+                   {{"type", "ERROR"}, {"message", "Unknown command"}}};
+    }
+    
+    return response.data;
+}
+
+// Enhanced User.hpp additions
+class User {
+    // ... existing code ...
+    
+public:
+    void InitializeForQuiz(eQuizMode mode, long long time_allowed_ms, unsigned int question_count);
+    void HandleDisconnection();
+    
+private:
+    void CalculateElapsedTimeOnDisconnection();
+};
+
+// Enhanced User.cpp additions
+void User::InitializeForQuiz(eQuizMode mode, long long time_allowed_ms, unsigned int question_count) {
+    if (mode == BULLET_TIMER_MODE) {
+        SetTotalTimeLimit(time_allowed_ms * question_count);
+    } else {
+        SetTotalTimeLimit(time_allowed_ms);
+        
+        if (mode == STRICT_TIME_BOUND_MODE) {
+            long long current_time = QuizHelper::get_current_time_in_ms();
+            SetStartTimeInMs(current_time);
+            SetEndTimeInMs(current_time + time_allowed_ms);
+        }
+    }
+}
+
+void User::HandleDisconnection() {
+    CalculateElapsedTimeOnDisconnection();
+}
+
+void User::CalculateElapsedTimeOnDisconnection() {
+    QuizConfig& cfg = QuizConfig::GetInstance();
+    eQuizMode quiz_mode = cfg.GetQuizMode();
+    long long last_activity_time = GetlastActivityTimeInMs();
+    
+    if (last_activity_time == 0) {
+        return; // No questions were accessed
+    }
+    
+    if (quiz_mode == TIME_BOUND_MODE) {
+        long long current_time = QuizHelper::get_current_time_in_ms();
+        long long elapsed_time = current_time - last_activity_time;
+        AddToElapsedTimeInQuiz(elapsed_time);
+    }
+    
+    ResetLastActivityTimeInMs();
+}

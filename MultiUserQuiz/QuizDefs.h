@@ -6,8 +6,9 @@
 #define MAX_NUMBER_OF_CORRECT_OPTION        3
 
 enum eQuizMode {
-    BULLET_TIMER_MODE,       // User has limited time per question
-    TIME_BOUND_MODE,         // User has limited total time to finish the quiz
+    BULLET_TIMER_MODE,          // User has limited time per question
+    TIME_BOUND_MODE,            // User has limited total time to finish the quiz
+    STRICT_TIME_BOUND_MODE,     // Quiz will start and end at hard specific time - user will not be compensated for disconnection or any other time loss.
     MODE_MAX,
 };
 

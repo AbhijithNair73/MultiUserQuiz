@@ -1,4 +1,4 @@
-#include "ConnectionMgr.hpp"
+#include "ConnectionMgr_OLD.hpp"
 #include "../QuizMgr.h"
 
 std::map<connection_hdl, std::string, std::owner_less<connection_hdl>> hdl_to_username;
@@ -24,6 +24,34 @@ std::shared_ptr<asio::ssl::context> on_tls_init (websocketpp::connection_hdl hdl
     return ctx;
 }
 
+bool check_if_time_has_elapsed (std::shared_ptr<User> pUser, eQuizMode pMode)
+{
+    if (pMode == BULLET_TIMER_MODE) {
+        // In bullet timer mode, we don't check time elapsed, as it is not relevant.
+        return false;
+    } else if (pMode == STRICT_TIME_BOUND_MODE) {
+
+        long long current_time = QuizHelper::get_current_time_in_ms ();
+        long long end_time = pUser->GetEndTimeInMs ();
+
+        if (current_time >= end_time) {
+            // Time has elapsed
+            return true;
+        }
+    } else if (pMode == TIME_BOUND_MODE) {
+
+        // In time bound mode, we check if the total time limit has been reached.
+        long long elapsed_time = pUser->GetElapsedTime ();
+        long long total_time_limit = pUser->GetTotalTimeLimit ();
+
+        if (elapsed_time >= total_time_limit) {
+            // Time has elapsed
+            return true;
+        }
+    }
+    return false;
+}
+
 // TODO: timer based check till which point the user will be allowed to login/relogin
 json handle_login_request (connection_hdl hdl, string password, string username)
 {
@@ -46,6 +74,7 @@ json handle_login_request (connection_hdl hdl, string password, string username)
         // Allow re-login only if quiz already started (user object exists)
         if (username_to_user.find (username) != username_to_user.end ()) {
             hdl_to_username[hdl] = username;
+            // "Reconnected" indicates that the client should call continue quiz instead of start quiz.
             return {{"type", "LOGIN_OK"}, {"welcome", username}, {"note", "Reconnected"}};
         }
 
@@ -56,13 +85,23 @@ json handle_login_request (connection_hdl hdl, string password, string username)
     return {{"type", "LOGIN_OK"}, {"welcome", username}};
 }
 
+void StrictQuizTimedOut ()
+{
+    std::cerr << "[TIMER] Time expired" << std::endl;
+    // Don't stop the server - as login should be allowed.
+    // But only know checking the result should be allowed as the quiz have already ended.
+
+}
+
 json handle_start_quiz (connection_hdl hdl)
 {
-        std::string uname;
-        unsigned int ques_count = QuestionBank::GetInstance ().TotalQuestionCount ();
-        QuizConfig & cfg = QuizConfig::GetInstance ();
-        bool is_bullet_mode = (cfg.GetQuizMode () == BULLET_TIMER_MODE);
-        long long time_allowed = cfg.GetTimeAllowedBasedOnQuizMode ();
+        std::string     uname;
+        unsigned int    ques_count      = QuestionBank::GetInstance ().TotalQuestionCount ();
+        QuizConfig &    cfg             = QuizConfig::GetInstance ();
+        eQuizMode       quiz_mode       = cfg.GetQuizMode ();
+        bool            is_bullet_mode  = (quiz_mode == BULLET_TIMER_MODE);
+        long long       time_allowed_in_ms    = cfg.GetTimeAllowedBasedOnQuizMode () * 1000;
+        long long       end_time_in_ms  = 0;
 
     {
         std::shared_lock lock (session_mutex);
@@ -73,7 +112,8 @@ json handle_start_quiz (connection_hdl hdl)
         uname = it->second;
 
         if (username_to_user.find (uname) != username_to_user.end ()) {
-
+            // this will also handle re-connection cases - after reconnection start quiz will not be allowed.
+            // on reconnection client should call continue quiz command.
             return {{"type", "ERROR"}, {"message", "Quiz already started"}};
         }
     }
@@ -83,22 +123,43 @@ json handle_start_quiz (connection_hdl hdl)
         username_to_user[uname] = std::make_shared<User> (uname);
 
         if (!is_bullet_mode) {
-            // time is managed by server in timebound mode and by client in bullet mode.
-            username_to_user[uname]->SetTotalTimeLimit (time_allowed);
+
+            username_to_user[uname]->SetTotalTimeLimit (time_allowed_in_ms);
+
+            if (quiz_mode == STRICT_TIME_BOUND_MODE) {
+
+                // case strict time bound mode - so start time and end time will be fixed.
+                username_to_user[uname]->SetStartTimeInMs (QuizHelper::get_current_time_in_ms ());
+                username_to_user[uname]->SetEndTimeInMs (username_to_user[uname]->GetStartTimeInMs () + (time_allowed_in_ms));
+                end_time_in_ms = username_to_user[uname]->GetEndTimeInMs ();
+            }
         } else {
             // this is for tracking and for fastest finger first result - tracking time in bullet mode.
-            username_to_user[uname]->SetTotalTimeLimit (time_allowed * ques_count);
+            username_to_user[uname]->SetTotalTimeLimit (time_allowed_in_ms * ques_count);
         }
+
+        time_allowed_in_ms = username_to_user[uname]->GetTotalTimeLimit ();
     }
 
+    // if strict mode, then the timer should be started by server
+    if (quiz_mode == STRICT_TIME_BOUND_MODE) {
+
+        std::unique_ptr<QuestionTimer>  quizTimer;
+
+        quizTimer = std::make_unique<QuestionTimer> (
+            time_allowed_in_ms,
+            std::bind (StrictQuizTimedOut)
+        );
+    }
 
     return {
-        {"type", "QUIZ_STARTED"}, 
-        {"total_questions", ques_count},
-        {"is_bullet_mode", is_bullet_mode},
-        {"is_multioption_allowed", cfg.IsMultiOptionSelect ()},
-        {"is_kbc_mode", cfg.IsKBCMode ()},
-        {"time_allowed", cfg.GetTimeAllowedBasedOnQuizMode ()}
+        {"type",                    "QUIZ_STARTED"}, 
+        {"total_questions",         ques_count},
+        {"quiz_mode",               quiz_mode},
+        {"is_multioption_allowed",  cfg.IsMultiOptionSelect ()},
+        {"is_kbc_mode",             cfg.IsKBCMode ()},
+        {"total_time",              time_allowed_in_ms},
+        {"end_time",                end_time_in_ms}     // used in strict time mode to show remaining time at client
     };
 }
 
@@ -107,7 +168,8 @@ json handle_continue_quiz (connection_hdl hdl)
 
     unsigned int ques_count = QuestionBank::GetInstance ().TotalQuestionCount ();
     QuizConfig & cfg = QuizConfig::GetInstance ();
-    bool is_bullet_mode = (cfg.GetQuizMode () == BULLET_TIMER_MODE);
+    eQuizMode    quiz_mode = cfg.GetQuizMode ();
+    bool is_bullet_mode = (quiz_mode == BULLET_TIMER_MODE);
 
     std::shared_ptr<User> user;
     {
@@ -126,43 +188,44 @@ json handle_continue_quiz (connection_hdl hdl)
 
     }
 
-    if (!is_bullet_mode) {
-
-        // this is a reconnection or relogin for an already running quiz in flexible time mode.
-        // so reconnection time loss should not be accounted in quiz time and user should get the same time as before reconnection.
-        long long new_time_limit = user->GetTotalTimeLimit() - user->GetElapsedTime ();
-        if (new_time_limit <= 0) {
-            // If the time limit is already over, we should not allow the user to continue.
-            return {{"type", "ERROR"}, {"message", "Time limit already over"}};
+    if (quiz_mode == TIME_BOUND_MODE) {
+        // in time bound mode, if reconnection happens that means the elapsed time should be updated, which is done using last activity time.
+        // and after updating elapsed time on disconnection, the last activity time should be resetted.
+        if (user->GetlastActivityTimeInMs () != 0) {
+            std::cerr<<"Something went wrong";
+            _exit (-1);
+            return {};
         }
+    }
 
-        // start time should be updated to current time.
-        user->SetStartTime (QuizHelper::get_current_time_in_ms ());
+    // Check if it is allowed or not and update the time elapsed.
+    if (check_if_time_has_elapsed (user, quiz_mode)) {
 
-        // update the total time - bcoz now again disconnection can happen and then the reconnection time loss calculating will be difficult.
-        user->SetTotalTimeLimit (new_time_limit);
-
-        user->UpdateElapsedTimeInQuiz (0);
-
-        // In strict time mode: start time will remain same and time loss should be considered in case of disconnection hence.
-        // new_time_limit = QuizHelper::get_current_time_in_ms () - user->GetStartTime ()
-        // // current time - start time - indicates the time elapsed. and total time will remain same.
-        // user->UpdateElapsedTimeInQuiz (new_time_limit);
+        std::cerr << "Time has elapsed not allowed to fetch question" << std::endl;
+        return {};
     }
 
     // fetch unattempted questions.
     const std::vector<unsigned int> unattempted = user->GetUnattemptedQuestionIds ();
 
+    if (unattempted.empty ()) {
+        // all attempted - just end quiz.
+        return  {
+            {"type", "QUIZ_ENDED"}
+        };
+    }
+
     return {
-        {"type", "QUIZ_RESTARTED"},
-        {"total_questions", ques_count},
-        {"is_bullet_mode", is_bullet_mode},
-        {"is_multioption_allowed", cfg.IsMultiOptionSelect ()},
-        {"is_kbc_mode", cfg.IsKBCMode ()},
-        {"time_allowed", cfg.GetTimeAllowedBasedOnQuizMode ()},
-        {"updated_total_time", user->GetTotalTimeLimit ()},
-        {"updated_elapsed_time", user->GetElapsedTime ()},
-        {"question_ids", unattempted}
+
+        {"type",                    "QUIZ_RESTARTED"},
+        {"total_questions",         ques_count},
+        {"quiz_mode",               quiz_mode},
+        {"is_multioption_allowed",  cfg.IsMultiOptionSelect ()},
+        {"is_kbc_mode",             cfg.IsKBCMode ()},
+        {"total_time",              user->GetTotalTimeLimit ()},
+        {"updated_elapsed_time",    user->GetElapsedTime ()},
+        {"end_time",                user->GetEndTimeInMs ()},
+        {"question_ids",            unattempted}
     };
 }
 
@@ -188,6 +251,36 @@ std::shared_ptr<User> check_and_return_user (connection_hdl hdl, json & pOutResp
     return uit->second;
 }
 
+void calculate_elapsed_time_on_disconnection (std::shared_ptr<User> pUser)
+{
+    QuizConfig & cfg = QuizConfig::GetInstance ();
+    eQuizMode    quiz_mode = cfg.GetQuizMode ();
+    long long   last_activity_time = pUser->GetlastActivityTimeInMs ();
+
+    if (last_activity_time == 0) {
+        // no question were checked - quiz was just started.
+        return;
+    }
+
+    if (quiz_mode == BULLET_TIMER_MODE) {
+        // In bullet timer mode, we don't calculate elapsed time on disconnection.
+        return;
+    } else if (quiz_mode == STRICT_TIME_BOUND_MODE) {
+        // In strict time bound mode, we rely on actual time. and 
+        // fastest finger will be calculated at end of quiz.
+        return;
+    } else if (quiz_mode == TIME_BOUND_MODE) {
+        // In time bound mode, we calculate elapsed time based on the last activity time.
+        long long current_time = QuizHelper::get_current_time_in_ms ();
+        long long elapsed_time = current_time - last_activity_time;
+        pUser->AddToElapsedTimeInQuiz (elapsed_time);
+    }
+    // reset the last activity time to 0, so that next time when user comes back, 
+    // it will be treated as a new session.
+    pUser->ResetLastActivityTimeInMs ();
+    return;
+}
+
 string perform_logout (connection_hdl hdl) 
 {
     std::string uname;
@@ -195,7 +288,14 @@ string perform_logout (connection_hdl hdl)
         std::unique_lock lock (session_mutex);
         auto it = hdl_to_username.find (hdl);
         if (it != hdl_to_username.end ()) {
+
             uname = it->second;
+            auto uit = username_to_user.find (uname);
+
+            if (uit != username_to_user.end ()) {
+                // quiz was started
+                calculate_elapsed_time_on_disconnection (uit->second);
+            }
             hdl_to_username.erase (it);
         }
     }
@@ -204,7 +304,7 @@ string perform_logout (connection_hdl hdl)
 
 json handle_fetch_unattempted_ques (connection_hdl hdl)
 {
-    json response;
+    json            response;
 
     std::shared_ptr<User> user = check_and_return_user (hdl, response);
 
@@ -212,7 +312,22 @@ json handle_fetch_unattempted_ques (connection_hdl hdl)
         return response;
     }
 
+    // check if the test time has elapsed
+    if (check_if_time_has_elapsed (user, QuizConfig::GetInstance ().GetQuizMode ())) {
+
+        std::cerr << "Time has elapsed not allowed to fetch question" << std::endl;
+        return response;
+    }
+
+    // Fetch unattempted questions for the user.
     const std::vector<unsigned int> unattempted = user->GetUnattemptedQuestionIds ();
+
+    if (unattempted.empty ()) {
+        // all attempted - just end quiz.
+        return  {
+            {"type", "QUIZ_ENDED"}
+        };
+    }
 
     response = {
         {"type", "UNATTEMPTED_QUESTIONS"},
@@ -220,6 +335,27 @@ json handle_fetch_unattempted_ques (connection_hdl hdl)
     };
 
     return response;
+}
+
+long long calculate_question_timer (std::shared_ptr<User> pUser)
+{
+    QuizConfig & cfg = QuizConfig::GetInstance ();
+    eQuizMode    quiz_mode = cfg.GetQuizMode ();
+
+    if (quiz_mode == BULLET_TIMER_MODE) {
+
+        // In bullet timer mode client should run the timer for each question based on the provided time in seconds.
+        return cfg.GetTimeAllowedBasedOnQuizMode () * 1000;
+
+    } else if (quiz_mode == TIME_BOUND_MODE) {
+
+        // for time bound mode, we calculate the remaining time based on the total time limit and elapsed time.
+        return (pUser->GetTotalTimeLimit () - pUser->GetElapsedTime ());
+    } else {
+
+        // for strict time bound mode
+        return (pUser->GetEndTimeInMs () - QuizHelper::get_current_time_in_ms ()); 
+    }
 }
 
 json process_request (connection_hdl hdl, json & req)
@@ -254,6 +390,7 @@ json process_request (connection_hdl hdl, json & req)
             return response;
         }
 
+        // TODO show result
 
     }
     else if (type == "FETCH_QUESTION") {
@@ -271,7 +408,14 @@ json process_request (connection_hdl hdl, json & req)
         }
 
         // Check if it is allowed or not and update the time elapsed.
+        if (check_if_time_has_elapsed (user, QuizConfig::GetInstance ().GetQuizMode ())) {
 
+            std::cerr << "Time has elapsed not allowed to fetch question" << std::endl;
+            return response;
+        }
+
+        // test time not elapsed - update the last activity time.
+        user->SetLastActivityTimeInMs ();
 
         std::shared_ptr<const Question> q = qb.GetQuestionById (qid);
 
@@ -280,8 +424,9 @@ json process_request (connection_hdl hdl, json & req)
             {"id",      q->GetQuestionID ()},
             {"text",    q->GetQuestionText ()},
             {"options", q->GetQuestionOptions ()},
-            {"updated_total_time", user->GetTotalTimeLimit ()},
+            {"total_time", user->GetTotalTimeLimit ()},
             {"updated_elapsed_time", user->GetElapsedTime ()},
+            {"question_timer", calculate_question_timer (user)},
         };
     }
     else if (type == "FETCH_UNATTEMPTED") {
@@ -297,6 +442,15 @@ json process_request (connection_hdl hdl, json & req)
             return response;
         }
 
+        // Check if it is allowed or not and update the time elapsed.
+        if (check_if_time_has_elapsed (user, QuizConfig::GetInstance ().GetQuizMode ())) {
+
+            std::cerr << "Time has elapsed not allowed to fetch question" << std::endl;
+            return response;
+        }
+        // test time not elapsed - update the last activity time.
+        user->SetLastActivityTimeInMs ();
+
         unsigned int qid = req.value ("question_id", 0);
         if (qid <= 0 || qid > qb.TotalQuestionCount ()) {
 
@@ -309,25 +463,19 @@ json process_request (connection_hdl hdl, json & req)
             ans.SetSelectedOp (op);
         }
 
-
-        long long time_to_attempt = req.value ("time_to_attempt", 0);
-        user->AddToElapsedTimeInQuiz (time_to_attempt);
-
-        // check if the answer submission is allowed or not or the timer has expired.
+        long long time_to_attempt_in_ms = req.value ("time_to_attempt_in_ms", 0);
+        user->AddToElapsedTimeInQuiz (time_to_attempt_in_ms);
 
         // TODO: status and score should be sent optionally based on KBC mode
         eQuesAttemptStatus status = user->SetAndValidateUserAnswer (ans);
         double score = user->GetUserCurrentScore ();
 
-        long long time_elapsed = user->GetElapsedTime ();
-
-        
         response = {
             {"type", "ANSWER_SUBMITTED"},
             {"question_id", qid},
             {"status",  static_cast<int>(status)},
             {"score", score},
-            {"updated_total_time", user->GetTotalTimeLimit ()},
+            {"total_time", user->GetTotalTimeLimit ()},
             {"updated_elapsed_time", user->GetElapsedTime ()},
         };
 

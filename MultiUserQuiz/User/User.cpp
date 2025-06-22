@@ -4,6 +4,7 @@ User::User (const std::string & pUserName)
 {
     vResultPtr = std::make_unique<Result> ();
     vUserName = pUserName;
+    ResetLastActivityTimeInMs ();
 }
 
 User::~User ()
@@ -11,14 +12,39 @@ User::~User ()
     // nothing to do
 }
 
-void User::SetStartTime (long long pStartTime)
+void User::SetStartTimeInMs (long long pStartTime)
 {
     vStartTime = pStartTime;
 }
 
-long long User::GetStartTime () const
+void User::SetEndTimeInMs (long long pTime)
+{
+    vEndTime = pTime;
+}
+
+long long User::GetStartTimeInMs () const
 { 
     return vStartTime;
+}
+
+long long User::GetEndTimeInMs () const
+{
+    return vEndTime;
+}
+
+void User::SetLastActivityTimeInMs ()
+{
+    vLastActivityTime = QuizHelper::get_current_time_in_ms ();
+}
+
+void User::ResetLastActivityTimeInMs ()
+{
+    vLastActivityTime = 0;
+}
+
+long long User::GetlastActivityTimeInMs () const
+{
+    return vLastActivityTime;
 }
 
 void User::SetTotalTimeLimit (long long pTotaltime)

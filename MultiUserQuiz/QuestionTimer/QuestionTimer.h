@@ -1,41 +1,76 @@
-#include <iostream>
+#pragma once
 #include <chrono>
-#include <condition_variable>
-#include <functional>
 #include <thread>
-#include <atomic>
 #include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <functional>
+#include <memory>
 
-/*
-* This class will be called for each question and hence each client will have its own instance of this class.
-* So on a machine/exe there wont be more than one instance of this class at a time.
-* So this class works for both the modes - if it is bullet mode then on timeout for each question it will call the callback function.
-* Similarly for time bound mode - it will call the callback function on timeout i.e the indicator for end of test.
-*/
+enum class TimerType {
+    QUESTION_TIMER,    // For individual questions
+    QUIZ_TIMER         // For entire quiz duration
+};
+
+enum class TimerState {
+    NOT_STARTED,
+    RUNNING,
+    ANSWERED,
+    TIMED_OUT,
+    FORCE_STOPPED
+};
+
 class QuestionTimer {
 
-    std::chrono::steady_clock::time_point start_time;
-    std::chrono::steady_clock::time_point end_time;
-    long long time_limit_ms;                                // holds the timelimit - in bullet mode it will be 15 sec, for timebound mode it will be total time of test.
+private:
 
-    std::atomic<bool> answered{false};                      // This will be set to true when the user answers the question and in Stop function - 
-                                                            // but this will not be used in TimeBoundMode
-    std::atomic<bool> running{false};
+    long long time_limit_ms;
     std::function<void ()> timeout_callback;
+    std::function<void ()> force_stop_callback;  // New callback for force stop
 
     std::thread timer_thread;
     std::mutex mtx;
     std::condition_variable cv;
 
- public:
- 
-                QuestionTimer       (long long limit_ms, std::function<void ()> callback);
-                ~QuestionTimer      ();
+    std::atomic<bool> answered{false};
+    std::atomic<bool> running{false};
+    std::atomic<bool> force_stopped{false};  // New atomic flag
 
-     void       Start               ();
-     void       Stop                ();
+    std::chrono::steady_clock::time_point start_time;
+    std::chrono::steady_clock::time_point end_time;
 
-     long long GetElapsedTimeMillis () const;
+    TimerType timer_type;
+    TimerState current_state{TimerState::NOT_STARTED};
 
+public:
+    QuestionTimer (long long limit_ms,
+                   std::function<void ()> callback,
+                   TimerType type = TimerType::QUESTION_TIMER,
+                   std::function<void ()> force_stop_cb = nullptr);
 
+    ~QuestionTimer ();
+
+    void Start ();
+    void Stop ();
+    void ForceStop ();  // New method for immediate termination
+
+    long long GetElapsedTimeMillis () const;
+    long long GetRemainingTimeMillis () const;
+
+    TimerState GetState () const
+    {
+        return current_state;
+    }
+    bool IsRunning () const
+    {
+        return running.load ();
+    }
+    bool IsForcesStopped () const
+    {
+        return force_stopped.load ();
+    }
+    TimerType GetTimerType () const
+    {
+        return timer_type;
+    }
 };

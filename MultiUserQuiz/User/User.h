@@ -16,8 +16,15 @@ class User {
                                 User                        (const std::string & pUserName);
                                 ~User                       ();
 
-        void                    SetStartTime                (long long pTotaltime);
-        long long               GetStartTime                () const;
+        void                    SetStartTimeInMs                (long long pTotaltime);
+        long long               GetStartTimeInMs                () const;
+
+        void                    SetEndTimeInMs                  (long long pTotaltime);
+        long long               GetEndTimeInMs                  () const;
+
+        void                    SetLastActivityTimeInMs         ();
+        void                    ResetLastActivityTimeInMs       ();
+        long long               GetlastActivityTimeInMs         () const;
 
         void                    SetTotalTimeLimit           (long long pTotaltime);
         long long               GetTotalTimeLimit           () const;
@@ -33,9 +40,12 @@ class User {
 
     private:
 
-        long long               vStartTime;                 // stores the julian time when the quiz is started. will be resetted 
-                                                            // when the quiz is restarted. This parameter is not needed for bullet mode as the time is managed on client
-                                                            // and is needed in time-bound mode for calculation of time remaining in case of reconnection or relogin.
+        long long               vStartTime;                 // stores the julian time when the quiz is started, used in strict mode to know when the quiz started
+
+        long long               vEndTime;                   // stores the julian time when the quiz will end - used in strict time bound mode.
+
+        long long               vLastActivityTime;          // This stores when the last request came from client to fetch question or submit answer. This will help in calculating 
+                                                            // the elapsed time in case of disconnection happens after long duration of inactivity at client.
 
         std::unique_ptr<Result> vResultPtr;                 // Result object for this user
         std::string             vUserName;                  // User name

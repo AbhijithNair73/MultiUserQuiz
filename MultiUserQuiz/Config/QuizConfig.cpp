@@ -5,72 +5,144 @@
 
 const char * CONFIG_FILE_NAME = "quiz_config.ini";
 
+namespace {
+
+    // Helper to normalize boolean strings
+    bool ParseBool (const std::string & value, bool & outBool)
+    {
+        std::string val = value;
+        std::transform (val.begin (), val.end (), val.begin (), ::tolower);
+
+        if (val == "true" || val == "1" || val == "yes") {
+            outBool = true;
+            return true;
+        } else if (val == "false" || val == "0" || val == "no") {
+            outBool = false;
+            return true;
+        }
+        return false;
+    }
+
+    // Helper to parse numeric values
+    template <typename T>
+    bool ParseNumber (const std::string & value, T & outVal)
+    {
+        try {
+            if constexpr (std::is_same_v<T, int>)
+                outVal = std::stoi (value);
+            else if constexpr (std::is_same_v<T, long long>)
+                outVal = std::stoll (value);
+            else if constexpr (std::is_same_v<T, double>)
+                outVal = std::stod (value);
+            else
+                return false;
+            return true;
+        } catch (...) {
+            return false;
+        }
+    }
+
+    // Helper to parse quiz mode
+    bool ParseQuizMode (const std::string & modeStr, eQuizMode & mode)
+    {
+        if (modeStr == "BULLET_TIMER_MODE") {
+            mode = BULLET_TIMER_MODE;
+        } else if (modeStr == "TIME_BOUND_MODE") {
+            mode = TIME_BOUND_MODE;
+        } else if (modeStr == "STRICT_TIME_BOUND_MODE") {
+            mode = STRICT_TIME_BOUND_MODE;
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+} // anonymous namespace
+
+// --- Main Parser Function ---
 int QuizConfig::Parser (void * user, const char * section, const char * name, const char * value)
 {
     QuizConfig * self = static_cast<QuizConfig *>(user);
-    std::string boolValStr;
 
-    if (strcmp (section, "Quiz") == 0) {
+    if (strcmp (section, "Quiz") != 0) {
+        std::cerr << "Unknown section: " << section << "\n";
+        return 0;
+    }
 
-        if (strcmp (name, "CorrectScore") == 0) {
+    std::string key (name);
+    std::string valStr (value);
 
-            self->posMarking = std::stod (value);
+    if (key == "CorrectScore") {
+        if (!ParseNumber (valStr, self->posMarking)) {
+            std::cerr << "Invalid CorrectScore value: " << valStr << "\n";
+            return 0;
+        }
 
-        } else if (strcmp (name, "IncorrectPenalty") == 0) {
+    } else if (key == "IncorrectPenalty") {
+        if (!ParseNumber (valStr, self->negMarking)) {
+            std::cerr << "Invalid IncorrectPenalty value: " << valStr << "\n";
+            return 0;
+        }
+        self->vIsNegMarking = true;
 
-            self->negMarking = std::stod (value);
-            self->vIsNegMarking = true;
+    } else if (key == "PartialScore") {
+        if (!ParseNumber (valStr, self->paritalMarking)) {
+            std::cerr << "Invalid PartialScore value: " << valStr << "\n";
+            return 0;
+        }
 
-        } else if (strcmp (name, "PartialScore") == 0) {
+    } else if (key == "QuizMode") {
+        if (!ParseQuizMode (valStr, self->vQuizMode)) {
+            std::cerr << "Invalid QuizMode: " << valStr << "\n";
+            return 0;
+        }
 
-            self->paritalMarking = std::stod (value);
+    } else if (key == "TimeAllowed") {
+        long long timeSecs;
+        if (!ParseNumber (valStr, timeSecs) || timeSecs <= 0 || timeSecs > 43200) {
+            std::cerr << "Invalid TimeAllowed. Must be > 0 and <= 43200 seconds. Got: " << valStr << "\n";
+            return 0;
+        }
 
-        } else if (strcmp (name, "QuizMode") == 0) {
-
-            // TODO quizMode
-        } else if (strcmp (name, "TimeAllowed") == 0) {
-
-            // TODO Time limit based on the quiz Mode
-
-        } else if (strcmp (name, "IsSingleUser") == 0) {
-
-            boolValStr = value;
-            std::transform (boolValStr.begin (), boolValStr.end (), boolValStr.begin (), ::tolower); // normalize
-
-            if (boolValStr == "true" || boolValStr == "1" || boolValStr == "yes") {
-                self->vIsSingleUser = true;
-            } else if (boolValStr == "false" || boolValStr == "0" || boolValStr == "no") {
-                self->vIsSingleUser = false;
-            }
-
-        } else if (strcmp (name, "IsMultiOptionSelect") == 0) {
-
-            boolValStr = value;
-            std::transform (boolValStr.begin (), boolValStr.end (), boolValStr.begin (), ::tolower); // normalize
-
-            if (boolValStr == "true" || boolValStr == "1" || boolValStr == "yes") {
-                self->vIsMultiOptionSelect = true;
-            } else if (boolValStr == "false" || boolValStr == "0" || boolValStr == "no") {
-                self->vIsMultiOptionSelect = false;
-            }
-
-        } else if (strcmp (name, "IsKBCMode") == 0) {
-
-            // Restrict KBCMode with TimerBound Quiz only allowed in Bullet mode.
-            self->vIsKBCMode = (strcmp (value, "true") == 0);
-
+        if (self->vQuizMode == BULLET_TIMER_MODE) {
+            self->vTimeAllowed.vTimePerQues = timeSecs;
         } else {
+            self->vTimeAllowed.vTotalQuizTime = timeSecs;
+        }
 
-            std::cerr << "Unknown key: " << name << " in section: " << section << "\n";
-            return 0;  // Stop parsing if unknown key
+    } else if (key == "IsSingleUser") {
+        if (!ParseBool (valStr, self->vIsSingleUser)) {
+            std::cerr << "Invalid IsSingleUser value: " << valStr << "\n";
+            return 0;
+        }
+
+    } else if (key == "IsMultiOptionSelect") {
+        if (!ParseBool (valStr, self->vIsMultiOptionSelect)) {
+            std::cerr << "Invalid IsMultiOptionSelect value: " << valStr << "\n";
+            return 0;
+        }
+
+        if (self->vIsMultiOptionSelect) {
+            self->paritalMarking = 0.5 * self->posMarking;
+        }
+
+    } else if (key == "IsKBCMode") {
+        if (self->vQuizMode != BULLET_TIMER_MODE) {
+            std::cerr << "KBC Mode is only allowed in BULLET_TIMER_MODE.\n";
+            return 0;
+        }
+
+        if (!ParseBool (valStr, self->vIsKBCMode)) {
+            std::cerr << "Invalid IsKBCMode value: " << valStr << "\n";
+            return 0;
         }
 
     } else {
-
-        std::cerr << "Unknown section: " << section << "\n";
-        return 0;  // Stop parsing if unknown section
+        std::cerr << "Unknown key: " << name << " in section: " << section << "\n";
+        return 0;
     }
-    return 1;  // Success, continue
+
+    return 1; // Success
 }
 
 QuizConfig & QuizConfig::GetInstance ()
