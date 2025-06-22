@@ -17,14 +17,74 @@ A command-line based multi-user quiz application built in C++ that supports real
 
 ```
 MultiUserQuiz/
+├── Answer/
+│   ├── Answer.cpp
+│   └── Answer.h
 ├── ClientApp/
-│   └── MultiUserQuizClient.cpp    # Client application source
-├── ServerApp/                     # Server application source files
-├── Common/                        # Shared code between client and server
-├── Config/                        # Configuration files
-├── Questions/                     # Quiz question banks
-├── CMakeLists.txt                # CMake build configuration
-└── README.md                     # Project documentation
+│   ├── ClientConnectionManager.cpp
+│   ├── ClientConnectionManager.hpp
+│   ├── ClientQuizController.cpp
+│   ├── ClientQuizController.hpp
+│   ├── ClientSessionManager.cpp
+│   ├── ClientSessionManager.hpp
+│   ├── MultiUserQuizClient.cpp
+│   ├── QuizClientUI.cpp
+│   └── QuizClientUI.hpp
+├── Config/
+│   ├── QuizConfig.cpp
+│   └── QuizConfig.h
+├── External/
+│   └── include/
+│       ├── asio/
+│       ├── ini/
+│       ├── nlohmann/
+│       ├── openssl/
+│       ├── websocketpp/
+│       └── xlnt/
+│           └── asio.hpp
+├── libs/
+│   ├── linux/
+│   └── windows/
+├── Question/
+│   ├── Question.cpp
+│   ├── Question.h
+│   ├── QuestionBank.cpp
+│   └── QuestionBank.h
+├── QuestionTimer/
+│   ├── QuestionTimer.cpp
+│   └── QuestionTimer.h
+├── Result/
+│   ├── Result.cpp
+│   └── Result.h
+├── Resources/
+│   ├── quiz_config.ini
+│   ├── QuizBank.xlsx
+│   └── server.crt
+├── ServerApp/
+│   ├── ConnectionManager.cpp
+│   ├── ConnectionManager.hpp
+│   ├── ConnectionMgr_OLDcpp.txt
+│   ├── ConnectionMgr_OLDhpp.txt
+│   ├── MultiUserQuizServer.cpp
+│   ├── OptimizedModularizedCode.txt
+│   ├── QuizController.cpp
+│   ├── QuizController.hpp
+│   ├── QuizStateManager.cpp
+│   ├── QuizStateManager.hpp
+│   ├── SessionManager.cpp
+│   └── SessionManager.hpp
+├── User/
+│   ├── User.cpp
+│   └── User.h
+├── CMakeLists.txt
+├── QuizDefs.cpp
+├── QuizDefs.h
+├── QuizMgr.cpp
+├── QuizMgr.h
+├── server.key
+├── gptattributes
+├── gitignore
+└── LICENSE.txt
 ```
 
 ## 🛠️ Tech Stack & Dependencies
